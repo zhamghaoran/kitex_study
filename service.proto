@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+option go_package = "kitex_gen/service";
+
+service hello {
+    rpc Send (HelloReq) returns (HelloResp);
+}
+message HelloReq {
+    string name = 1;
+}
+message HelloResp {
+    string res = 1;
+}
