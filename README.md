@@ -1,5 +1,5 @@
 ## kitex 教程
-
+- 官方文档：https://www.cloudwego.io/zh/docs/kitex/
 ## 简单demo
 
 ### 编写proto文件
@@ -61,3 +61,30 @@ func main() {
 }
 ```
 完成客户端编写
+
+### 异常信息返回
+如果调用链路跑不通的话，肯定可以获取到err的值，但是如果我们想要获取到逻辑错误返回的err，以便于链路err做区分，那么就需要使用额外的方法来包装错误
+
+服务端错误封装
+```go
+func (s *HelloImpl) Send(ctx context.Context, req *service.HelloReq) (resp *service.HelloResp, err error) {
+	resp = &service.HelloResp{Res: "hello " + req.Name}
+	err = kerrors.NewGRPCBizStatusError(500, "err")
+	grpcStatusErr := err.(kerrors.GRPCStatusIface)
+	st, _ := grpcStatusErr.GRPCStatus().WithDetails(resp)
+	grpcStatusErr.SetGRPCStatus(st)
+	return
+}
+```
+客户端获取错误
+```go
+send, err := newClient.Send(context.Background(), req)
+	if err != nil {
+		if bizErr, ok := kerrors.FromBizStatusError(err); ok {
+			fmt.Println(bizErr.BizStatusCode())
+			fmt.Println(bizErr.BizMessage())
+			// 通过类型断言获取到detail信息
+			println(bizErr.(status.Iface).GRPCStatus().Details()[0].(*service.HelloResp).Res)
+		}
+	}
+```
