@@ -62,7 +62,7 @@ func main() {
 ```
 完成客户端编写
 
-### 异常信息返回
+## 异常信息返回
 如果调用链路跑不通的话，肯定可以获取到err的值，但是如果我们想要获取到逻辑错误返回的err，以便于链路err做区分，那么就需要使用额外的方法来包装错误
 
 服务端错误封装
@@ -88,3 +88,56 @@ send, err := newClient.Send(context.Background(), req)
 		}
 	}
 ```
+## 整合etcd 完成服务发现
+### server 端代码
+```go
+package main
+
+import (
+	"github.com/cloudwego/kitex/pkg/rpcinfo"
+	"github.com/cloudwego/kitex/server"
+	etcd "github.com/kitex-contrib/registry-etcd"
+	service "kitex_study/kitex_gen/kitex_gen/service/hello"
+	"log"
+)
+
+func main() {
+	// 填写etcd 的地址
+	registry, err := etcd.NewEtcdRegistry([]string{"127.0.0.1:12380"})
+	if err != nil {
+		panic(err)
+	}
+	// 现在本地注册服务，然后再向etcd 注册服务
+	svr := service.NewServer(new(HelloImpl), server.WithServerBasicInfo(&rpcinfo.EndpointBasicInfo{ServiceName: "Hello"}), server.WithRegistry(registry))
+	err = svr.Run()
+	if err != nil {
+		log.Println(err.Error())
+	}
+}
+```
+### client 端代码
+同理，在client 当中指定etcd的地址，获取到etcdResolver，然后在获取连接客户端的时候指定服务的名称即可完成服务发现
+```go
+registry, err := etcd.NewEtcdResolver([]string{"127.0.0.1:12380"})
+	if err != nil {
+		panic(err)
+	}
+	newClient, err := hello.NewClient("Hello", client.WithResolver(registry), client.WithTransportProtocol(transport.GRPC))
+```
+## 超时控制
+在方法调用的时候添加 `callopt.WithRPCTimeout(2 * time.Second)` 或者 在客户端配置当中加上`client.WithRPCTimeout(2 * time.Second)`
+客户端中配置：
+```go
+newClient, err := hello.NewClient("Hello", client.WithResolver(registry), client.WithRPCTimeout(time.Second*2))
+```
+调用方法时配置：
+```go
+send, err := newClient.Send(context.Background(), req, callopt.WithRPCTimeout(time.Second*2))
+```
+可以根据具体场景来选择超时控制的力度
+
+可以通过
+```go
+kerrors.IsTimeoutError(err)
+```
+来判断这个err是不是因为超时导致的
